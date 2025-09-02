@@ -1,0 +1,6 @@
+@CloudTaskManager_HostAddress = http://localhost:5113
+
+GET {{CloudTaskManager_HostAddress}}/health/
+Accept: application/json
+
+###
