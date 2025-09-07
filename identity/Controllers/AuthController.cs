@@ -10,8 +10,10 @@ namespace identity.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(UserManager<IdentityUser> userManager,
-    IConfiguration config) : ControllerBase
+public class AuthController(
+    UserManager<IdentityUser> userManager,
+    IConfiguration config,
+    RoleManager<IdentityRole> roleManager) : ControllerBase
 {
     [HttpPost("register")]
     public async Task<IActionResult> CreateUser(RegisterRequest registerRequest)
@@ -27,7 +29,8 @@ public class AuthController(UserManager<IdentityUser> userManager,
         
         if (result.Succeeded)
             return Ok(new { user.Id, Message = "User registered successfully" });
-
+        
+        await userManager.AddToRoleAsync(user, "User");
         return BadRequest(result.Errors);
     }
     
@@ -53,16 +56,15 @@ public class AuthController(UserManager<IdentityUser> userManager,
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
         var roles = await userManager.GetRolesAsync(user);
-        var roleClaims = roles.Select(r => new Claim(ClaimTypes.Role, r));
+
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, user.Id),
             new(JwtRegisteredClaimNames.Email, user.Email!),
-            new(JwtRegisteredClaimNames.UniqueName, user.UserName!),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new(JwtRegisteredClaimNames.UniqueName, user.UserName!)
         };
-        claims.AddRange(roleClaims);
 
+        claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
         var token = new JwtSecurityToken(
             issuer: jwtSettings["Issuer"],
