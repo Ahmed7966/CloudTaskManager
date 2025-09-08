@@ -1,6 +1,7 @@
 ﻿using System.Security.Claims;
 using CloudTaskManager.Data;
 using CloudTaskManager.DTO_s;
+using CloudTaskManager.Message;
 using CloudTaskManager.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -11,7 +12,7 @@ namespace CloudTaskManager;
 [Authorize]
 [ApiController]
 [Route("api/tasks")]
-public class TaskController(TaskDbContext taskDbContext) : ControllerBase
+public class TaskController(TaskDbContext taskDbContext, IEventPublisher eventPublisher) : ControllerBase
 {
     [HttpPost("create")]
     public async Task<IActionResult> CreateTask(CreateTaskDto createTaskDto)
@@ -32,16 +33,53 @@ public class TaskController(TaskDbContext taskDbContext) : ControllerBase
             AssignedToUserId = userId
         };
 
+        if (createTaskDto.Attachments?.Any() == true)
+        {
+            task.Attachments = createTaskDto.Attachments.Select(a => new Attachment
+            {
+                FileUrl = a.FileUrl,
+                FileName = a.FileName
+            }).ToList();
+        }
+
+        if (createTaskDto.Comments?.Any() == true)
+        {
+            task.Comments = createTaskDto.Comments.Select(c => new Comment
+            {
+                Content = c.Content,
+                UserId = userId
+            }).ToList();
+        }
+
+        if (createTaskDto.Labels?.Any() == true)
+        {
+            task.Labels = createTaskDto.Labels.Select(l => new Label
+            {
+                Name = l.Name,
+                Color = l.Color
+            }).ToList();
+        }
+
+        if (createTaskDto.Reminders?.Any() == true)
+        {
+            task.Reminders = createTaskDto.Reminders.Select(r => new Reminder
+            {
+                ReminderTime = r.ReminderTime
+            }).ToList();
+        }
+
         await taskDbContext.TaskItems.AddAsync(task);
         await taskDbContext.SaveChangesAsync();
 
-        return Ok(new
+        await eventPublisher.PublishTaskCreated(task);
+        
+        return Ok(new TaskResponseDto
         {
-            task.Id,
-            task.Title,
-            task.DueDate,
-            task.Status,
-            task.AssignedToUserId
+           Id = task.Id,
+           Title = task.Title,
+           DueDate = task.DueDate,
+           Status = task.Status,
+           AssignedToUserId = task.AssignedToUserId
         });
     }
 
@@ -53,6 +91,10 @@ public class TaskController(TaskDbContext taskDbContext) : ControllerBase
 
         var query = taskDbContext.TaskItems
             .Include(t => t.SubTasks)
+            .Include(t => t.Attachments)
+            .Include(t => t.Comments)
+            .Include(t => t.Labels)
+            .Include(t => t.Reminders)
             .Where(t => t.ParentTaskId == null);
 
         if (userRole != "BoardOwner")
@@ -73,17 +115,15 @@ public class TaskController(TaskDbContext taskDbContext) : ControllerBase
 
         query = request.SortBy?.ToLower() switch
         {
-            "duedate" => request.SortDirection.Equals("desc"
-                , StringComparison.CurrentCultureIgnoreCase)
+            "duedate" => request.SortDirection.Equals("desc", StringComparison.CurrentCultureIgnoreCase)
                 ? query.OrderByDescending(x => x.DueDate)
                 : query.OrderBy(x => x.DueDate),
 
-            "title" => request.SortDirection.Equals("desc"
-                , StringComparison.CurrentCultureIgnoreCase)
+            "title" => request.SortDirection.Equals("desc", StringComparison.CurrentCultureIgnoreCase)
                 ? query.OrderByDescending(x => x.Title)
                 : query.OrderBy(x => x.Title),
 
-            _ => query.OrderBy(x => x.Id) 
+            _ => query.OrderBy(x => x.Id)
         };
 
         var totalCount = await query.CountAsync();
@@ -98,7 +138,13 @@ public class TaskController(TaskDbContext taskDbContext) : ControllerBase
     [HttpPut("update")]
     public async Task<IActionResult> UpdateTask(UpdateTaskDto updateTaskDto)
     {
-        var task = await taskDbContext.TaskItems.FindAsync(updateTaskDto.Id);
+        var task = await taskDbContext.TaskItems
+            .Include(t => t.Attachments)
+            .Include(t => t.Comments)
+            .Include(t => t.Labels)
+            .Include(t => t.Reminders)
+            .FirstOrDefaultAsync(t => t.Id == updateTaskDto.Id);
+
         if (task == null)
             return NotFound("Task not found");
 
@@ -119,17 +165,68 @@ public class TaskController(TaskDbContext taskDbContext) : ControllerBase
 
         if (updateTaskDto.Status.HasValue)
             task.Status = updateTaskDto.Status.Value;
-        
+
         if (updateTaskDto.BoardId.HasValue)
             task.BoardId = updateTaskDto.BoardId.Value;
-        
+
         if (updateTaskDto.ParentTaskId.HasValue)
             task.ParentTaskId = updateTaskDto.ParentTaskId.Value;
 
         task.UpdatedAt = DateTime.UtcNow;
 
-        await taskDbContext.SaveChangesAsync();
+        if (updateTaskDto.Attachments?.Any() == true)
+        {
+            task.Attachments.Clear();
+            foreach (var a in updateTaskDto.Attachments)
+            {
+                task.Attachments.Add(new Attachment
+                {
+                    FileUrl = a.FileUrl,
+                    FileName = a.FileName
+                });
+            }
+        }
 
+        if (updateTaskDto.Comments?.Any() == true)
+        {
+            task.Comments.Clear();
+            foreach (var c in updateTaskDto.Comments)
+            {
+                task.Comments.Add(new Comment
+                {
+                    Content = c.Content,
+                    UserId = userId
+                });
+            }
+        }
+
+        if (updateTaskDto.Labels?.Any() == true)
+        {
+            task.Labels.Clear();
+            foreach (var l in updateTaskDto.Labels)
+            {
+                task.Labels.Add(new Label
+                {
+                    Name = l.Name,
+                    Color = l.Color
+                });
+            }
+        }
+
+        if (updateTaskDto.Reminders?.Any() == true)
+        {
+            task.Reminders.Clear();
+            foreach (var r in updateTaskDto.Reminders)
+            {
+                task.Reminders.Add(new Reminder
+                {
+                    ReminderTime = r.ReminderTime
+                });
+            }
+        }
+
+        await taskDbContext.SaveChangesAsync();
+        await eventPublisher.PublishTaskUpdated(task);
         return Ok(new { task.Id, Message = "Task updated successfully" });
     }
 
@@ -148,7 +245,7 @@ public class TaskController(TaskDbContext taskDbContext) : ControllerBase
 
         taskDbContext.TaskItems.Remove(task);
         await taskDbContext.SaveChangesAsync();
-
+        await eventPublisher.PublishTaskDeleted(id);
         return NoContent();
     }
 }

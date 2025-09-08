@@ -18,4 +18,8 @@ public class CreateTaskDto
     public int BoardId { get; set; }
 
     public Guid? ParentTaskId { get; set; } 
+    public List<CreateAttachmentDto>? Attachments { get; set; }
+    public List<CreateCommentDto>? Comments { get; set; }
+    public List<CreateLabelDto>? Labels { get; set; }
+    public List<CreateReminderDto>? Reminders { get; set; }
 }

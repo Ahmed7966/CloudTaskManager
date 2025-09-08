@@ -113,5 +113,61 @@ public class TaskDbContext(DbContextOptions<TaskDbContext> options) : DbContext(
             new Member { Id = 1, BoardId = boardId, UserId = "demo-user-1", Role = "BoardOwner" },
             new Member { Id = 2, BoardId = boardId, UserId = "demo-user-2", Role = "User" }
         );
+        
+        modelBuilder.Entity<Comment>().HasData(
+            new Comment
+            {
+                Id = 1,
+                Content = "This is the first comment on Setup project",
+                TaskItemId = task1Id,
+                CreatedAt = new DateTime(2025, 9, 2),
+                UserId = "demo-user-1"
+            },
+            new Comment
+            {
+                Id = 2,
+                Content = "Make sure to use JWT Bearer tokens",
+                TaskItemId = task2Id,
+                CreatedAt = new DateTime(2025, 9, 3),
+                UserId = "demo-user-2"
+            }
+        );
+        modelBuilder.Entity<Label>().HasData(
+            new Label { Id = 1, Name = "Backend", Color = "#FF5733", TaskItemId = task1Id },
+            new Label { Id = 2, Name = "Auth", Color = "#33C1FF", TaskItemId = task2Id }
+        );
+        modelBuilder.Entity<Reminder>().HasData(
+            new Reminder
+            {
+                Id = 1,
+                TaskItemId = task1Id,
+                ReminderTime = new DateTime(2025, 9, 4),
+            },
+            new Reminder
+            {
+                Id = 2,
+                TaskItemId = task2Id,
+                ReminderTime = new DateTime(2025, 9, 9),
+            }
+        );
+        modelBuilder.Entity<Attachment>().HasData(
+            new Attachment
+            {
+                Id = 1,
+                TaskItemId = task1Id,
+                FileUrl = "/files/project-setup-guide.pdf",
+                FileName = "ProjectSetupGuide.pdf",
+                UploadedAt = new DateTime(2025, 9, 2)
+            },
+            new Attachment
+            {
+                Id = 2,
+                TaskItemId = task2Id,
+                FileUrl = "/files/auth-diagram.png",
+                FileName = "AuthDiagram.png",
+                UploadedAt = new DateTime(2025, 9, 3)
+            }
+        );
+
     }
 }
