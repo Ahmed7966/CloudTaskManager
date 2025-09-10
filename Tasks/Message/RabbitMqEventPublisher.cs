@@ -71,6 +71,17 @@ public class RabbitMqEventPublisher : IEventPublisher, IAsyncDisposable
     public Task PublishTaskDeleted(Guid taskId) =>
         PublishAsync("task.deleted", new { Id = taskId });
 
+    public Task PublishReminderDue(Reminder reminder, string? userId)
+    {
+        return PublishAsync("reminder.due", new
+        {
+            reminder.Id,
+            reminder.TaskItemId,
+            reminder.ReminderTime,
+            UserId = userId
+        });
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_channel != null)

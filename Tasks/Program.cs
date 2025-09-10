@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using CloudTaskManager.Background;
 using CloudTaskManager.Message;
 using Microsoft.OpenApi.Models;
 
@@ -68,6 +69,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("UserOrOwner", policy => policy.RequireRole("User", "BoardOwner"));
 });
 builder.Services.AddSingleton<IEventPublisher, RabbitMqEventPublisher>();
+builder.Services.AddHostedService<ReminderDueWorker>();
 
 var app = builder.Build();
 

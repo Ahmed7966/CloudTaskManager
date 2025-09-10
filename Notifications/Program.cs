@@ -1,15 +1,23 @@
-var builder = WebApplication.CreateBuilder(args);
+using Notifications.Events;
+using Notifications.Hub;
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("BlazorClientPolicy", policy =>
+    {
+        policy.WithOrigins("http://localhost:5150") // Blazor client
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials(); 
+    });
+});
+builder.Services.AddSignalR();
+builder.Services.AddHostedService<RabbitMqEventSubscriber>();
+
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(); 
-}
+app.UseCors("BlazorClientPolicy");
+app.MapHub<NotificationHub>("/hub/notifications");
 
-app.MapGet("/health", () => "ok");
-app.UseHttpsRedirection();
 app.Run();
