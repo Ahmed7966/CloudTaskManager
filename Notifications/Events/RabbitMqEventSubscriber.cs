@@ -6,54 +6,71 @@ using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
 namespace Notifications.Events;
-public class RabbitMqEventSubscriber : BackgroundService
+public class RabbitMqEventSubscriber(
+    ILogger<RabbitMqEventSubscriber> logger,
+    IConfiguration config,
+    IHubContext<NotificationHub> notificationHub)
+    : BackgroundService
 {
-    private readonly ILogger<RabbitMqEventSubscriber> _logger;
-    private readonly IConfiguration _config;
-
     private IConnection? _connection;
     private IChannel? _channel;
-    private readonly IHubContext<NotificationHub> _hub;
-
     private const string ExchangeName = "cloudtask.events";
 
-    public RabbitMqEventSubscriber(ILogger<RabbitMqEventSubscriber> logger, IConfiguration config , IHubContext<NotificationHub>  notificationHub)
-    {
-        _hub = notificationHub;
-        _logger = logger;
-        _config = config;
-        _ = InitRabbitMqAsync();
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    { 
+        logger.LogInformation("✅ RabbitMQ subscriber is started running.");
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await InitRabbitMqAsync(stoppingToken);
+                await Task.Delay(Timeout.Infinite, stoppingToken); 
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "❌ RabbitMQ connection failed. Retrying in 5 seconds...");
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken); 
+            }
+        }
     }
 
-    private async Task InitRabbitMqAsync()
+    private async Task InitRabbitMqAsync(CancellationToken stoppingToken)
     {
-        var connectionString = _config.GetValue<string>("RabbitMQ:Host");
+        var connectionString = config.GetValue<string>("RabbitMQ:Host");
         if (string.IsNullOrWhiteSpace(connectionString))
             throw new InvalidOperationException("RabbitMQ connection string is missing in appsettings.json");
 
-        var factory = new ConnectionFactory
-        {
-            Uri = new Uri(connectionString),
-        };
+        var factory = new ConnectionFactory { Uri = new Uri(connectionString) };
 
-        _connection = await factory.CreateConnectionAsync();
-        _channel = await _connection.CreateChannelAsync();
+        _connection = await factory.CreateConnectionAsync(stoppingToken);
+        _channel = await _connection.CreateChannelAsync(cancellationToken:stoppingToken);
 
-        await _channel.ExchangeDeclareAsync(exchange: ExchangeName, type: ExchangeType.Topic, durable: true);
+        await _channel.ExchangeDeclareAsync(exchange: ExchangeName, type: ExchangeType.Topic, durable: true, cancellationToken: stoppingToken);
 
         var queueName = $"notification-service-{Guid.NewGuid()}";
-        await _channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true);
+        await _channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true, cancellationToken: stoppingToken);
 
-        
-        await _channel.QueueBindAsync(queueName, ExchangeName, "task.*");
-        await _channel.QueueBindAsync(queueName, ExchangeName, "reminder.*");
+        await _channel.QueueBindAsync(queueName, ExchangeName, "task.*", cancellationToken: stoppingToken);
+        await _channel.QueueBindAsync(queueName, ExchangeName, "reminder.*", cancellationToken: stoppingToken);
 
         var consumer = new AsyncEventingBasicConsumer(_channel);
         consumer.ReceivedAsync += OnEventReceivedAsync;
 
-        await _channel.BasicConsumeAsync(queue: queueName, autoAck: true, consumer: consumer);
+        await _channel.BasicConsumeAsync(queue: queueName, autoAck: true, consumer: consumer, cancellationToken: stoppingToken);
 
-        _logger.LogInformation("✅ RabbitMQ subscriber initialized (queue {Queue})", queueName);
+        logger.LogInformation("✅ RabbitMQ subscriber initialized (queue {Queue})", queueName);
+
+        _connection.ConnectionShutdownAsync += async (_, reason) =>
+        {
+            logger.LogWarning("⚠️ RabbitMQ connection closed: {Reason}. Reconnecting...", reason.ReplyText);
+            await ReconnectAsync(stoppingToken);
+        };
+    }
+
+    private async Task ReconnectAsync(CancellationToken stoppingToken)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+        await InitRabbitMqAsync(stoppingToken);
     }
 
     private async Task OnEventReceivedAsync(object sender, BasicDeliverEventArgs ea)
@@ -64,44 +81,53 @@ public class RabbitMqEventSubscriber : BackgroundService
             var routingKey = ea.RoutingKey;
             var payload = JsonSerializer.Deserialize<JsonElement>(message);
 
+            var correlationId = ea.BasicProperties?.CorrelationId ?? Guid.NewGuid().ToString();
+            
             if (routingKey == "task.created" && payload.TryGetProperty("BoardId", out var boardId))
             {
-                await _hub.Clients.Group($"board:{boardId}")
+                await notificationHub.Clients.Group($"board:{boardId}")
                     .SendAsync("taskCreated", payload);
+
+                logger.LogInformation("📩 TaskCreated event processed for Board {BoardId} [CorrelationId: {CorrelationId}]",
+                    boardId,
+                    correlationId);
             }
             else if (routingKey == "task.updated" && payload.TryGetProperty("BoardId", out var boardId2))
             {
-                await _hub.Clients.Group($"board:{boardId2}")
+                await notificationHub.Clients.Group($"board:{boardId2}")
                     .SendAsync("taskUpdated", payload);
+
+                logger.LogInformation("📩 TaskUpdated event processed for Board {BoardId} [CorrelationId: {CorrelationId}]",
+                    boardId2,
+                    correlationId);
             }
             else if (routingKey == "reminder.due" && payload.TryGetProperty("UserId", out var userId))
             {
-                await _hub.Clients.Group($"user:{userId.GetString()}")
+                await notificationHub.Clients.Group($"user:{userId.GetString()}")
                     .SendAsync("reminderDue", payload);
-            }
 
-            _logger.LogInformation("📩 Event {RoutingKey}: {Message}", routingKey, message);
+                logger.LogInformation("⏰ ReminderDue event processed for User {UserId} [CorrelationId: {CorrelationId}]",
+                    userId.GetString(),
+                    correlationId);
+            }
+            else
+            {
+                logger.LogWarning("⚠️ Unhandled event {RoutingKey}: {Message} [CorrelationId: {CorrelationId}]",
+                    routingKey,
+                    message,
+                    correlationId);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing event");
+            logger.LogError(ex, "Error processing event");
         }
-    }
-
-
-
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        await InitRabbitMqAsync();
-        await Task.Delay(Timeout.Infinite, stoppingToken); // keep alive
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         if (_channel != null)
             await _channel.CloseAsync(cancellationToken);
-
         if (_connection != null)
             await _connection.CloseAsync(cancellationToken);
 

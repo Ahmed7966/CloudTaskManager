@@ -15,6 +15,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Console.WriteLine("es");
         HubClient.OnEventReceived += (name, payload) =>
         {
             _events.Add($"{DateTime.Now:T} - {name}: {payload}");
@@ -24,4 +25,9 @@
         await HubClient.StartAsync();
         await HubClient.JoinBoardAsync(1);
     }
+    
+    
+    
+    
+    
 }

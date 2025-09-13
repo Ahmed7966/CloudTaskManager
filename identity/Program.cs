@@ -61,6 +61,7 @@ builder.Services.AddAuthentication("Bearer")
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddHealthChecks();
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -83,9 +84,9 @@ using (var scope = app.Services.CreateScope())
         }
     }
 }
-app.MapGet("/health", () => "ok");
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health");
 app.Run();

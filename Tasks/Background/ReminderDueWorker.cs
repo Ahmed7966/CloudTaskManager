@@ -30,7 +30,7 @@ public class ReminderDueWorker(IServiceProvider serviceProvider, ILogger<Reminde
 
                     await publisher.PublishReminderDue(reminder, userId);
 
-                    db.Reminders.Remove(reminder); 
+                    reminder.IsSent = true;
                 }
 
                 await db.SaveChangesAsync(stoppingToken);

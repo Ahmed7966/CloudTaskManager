@@ -4,13 +4,17 @@ using CloudTaskManager.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using shared.Correlation;
 
 namespace CloudTaskManager;
 
 [Authorize]
 [ApiController]
 [Route("api/Board")]
-public class BoardController(TaskDbContext taskDbContext) : ControllerBase
+public class BoardController(
+    TaskDbContext taskDbContext,
+    ILogger<BoardController> logger,
+    ICorrelationIdAccessor correlationIdAccessor) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetBoards()
@@ -22,8 +26,13 @@ public class BoardController(TaskDbContext taskDbContext) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateBoard(BoardDto boardDto)
     {
-        if(!ModelState.IsValid)
+        if (!ModelState.IsValid)
+        {
+            logger.LogWarning(
+                $"Invalid request to create board: {boardDto} [CorrelationId: {correlationIdAccessor.CorrelationId}]");
             return BadRequest(ModelState);
+        }
+
         var board = new Board
         {
             Name = boardDto.Name,
@@ -37,16 +46,24 @@ public class BoardController(TaskDbContext taskDbContext) : ControllerBase
     [HttpPut]
     public async Task<IActionResult> UpdateBoard(UpdateBoardDto updateBoardDto)
     {
-        if(!ModelState.IsValid)
+        if (!ModelState.IsValid)
+        {
+            logger.LogWarning(
+                $"Invalid request to update board: {updateBoardDto} [CorrelationId: {correlationIdAccessor.CorrelationId}]");
             return BadRequest(ModelState);
+        }
 
         var board = await taskDbContext.Boards.FindAsync(updateBoardDto.Id);
         if (board == null)
+        {
+            logger.LogWarning(
+                $"Board with id: {updateBoardDto.Id} does not exist [CorrelationId: {correlationIdAccessor.CorrelationId}]");
             return NotFound("Board not found");
-        
-        if(!string.IsNullOrEmpty(updateBoardDto.Name))
+        }
+
+        if (!string.IsNullOrEmpty(updateBoardDto.Name))
             board.Name = updateBoardDto.Name;
-        if(!string.IsNullOrEmpty(updateBoardDto.Description))
+        if (!string.IsNullOrEmpty(updateBoardDto.Description))
             board.Description = updateBoardDto.Description;
         if (updateBoardDto.TaskIds != null)
         {
@@ -63,21 +80,28 @@ public class BoardController(TaskDbContext taskDbContext) : ControllerBase
                 .ToListAsync();
             board.Members = members;
         }
-        
+
         await taskDbContext.SaveChangesAsync();
+        logger.LogInformation(
+            $"Board with id: {updateBoardDto.Id} has been updated [CorrelationId: {correlationIdAccessor.CorrelationId}]");
         return Ok(board);
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteBoard(int id)
-    { 
+    {
         var deletedCount = await taskDbContext.Boards
-            .Where(x=>x.Id == id)
+            .Where(x => x.Id == id)
             .ExecuteDeleteAsync();
-        
+
         if (deletedCount == 0)
+        {
+            logger.LogWarning(
+                $"Board with id: {id} does not exist [CorrelationId: {correlationIdAccessor.CorrelationId}]");
             return NotFound($"Board with id {id} not found");
-        
+        }
+
+        logger.LogInformation($"Board deleted [{id}] [CorrelationId: {correlationIdAccessor.CorrelationId}");
         return NoContent();
     }
 }

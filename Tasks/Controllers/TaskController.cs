@@ -6,19 +6,27 @@ using CloudTaskManager.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using shared.Correlation;
 
 namespace CloudTaskManager;
 
 [Authorize]
 [ApiController]
 [Route("api/tasks")]
-public class TaskController(TaskDbContext taskDbContext, IEventPublisher eventPublisher) : ControllerBase
+public class TaskController(
+    TaskDbContext taskDbContext,
+    IEventPublisher eventPublisher,
+    ILogger<TaskController> logger,
+    ICorrelationIdAccessor correlationIdAccessor) : ControllerBase
 {
     [HttpPost("create")]
     public async Task<IActionResult> CreateTask(CreateTaskDto createTaskDto)
     {
         if (!ModelState.IsValid)
+        {
+            logger.LogError($"Invalid request to create task. [CorrelationId: {correlationIdAccessor.CorrelationId}]");
             return BadRequest(ModelState);
+        }
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -73,6 +81,7 @@ public class TaskController(TaskDbContext taskDbContext, IEventPublisher eventPu
 
         await eventPublisher.PublishTaskCreated(task);
         
+        logger.LogInformation($"Task created: {task.Title} [CorrelationId: {correlationIdAccessor.CorrelationId}]");
         return Ok(new TaskResponseDto
         {
            Id = task.Id,
@@ -138,6 +147,11 @@ public class TaskController(TaskDbContext taskDbContext, IEventPublisher eventPu
     [HttpPut("update")]
     public async Task<IActionResult> UpdateTask(UpdateTaskDto updateTaskDto)
     {
+        if (!ModelState.IsValid)
+        {
+            logger.LogError($"Invalid request to update task. [CorrelationId: {correlationIdAccessor.CorrelationId}]");
+            return BadRequest(ModelState);
+        }
         var task = await taskDbContext.TaskItems
             .Include(t => t.Attachments)
             .Include(t => t.Comments)
@@ -146,13 +160,19 @@ public class TaskController(TaskDbContext taskDbContext, IEventPublisher eventPu
             .FirstOrDefaultAsync(t => t.Id == updateTaskDto.Id);
 
         if (task == null)
+        {
+            logger.LogError($"Task with id: {updateTaskDto.Id} does not exist [CorrelationId: {correlationIdAccessor.CorrelationId}]");
             return NotFound("Task not found");
+        }
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var userRole = User.FindFirstValue(ClaimTypes.Role);
 
         if (task.AssignedToUserId != userId && userRole != "BoardOwner")
+        {
+            logger.LogError($"Unauthorized access to task with id: {updateTaskDto.Id} [{userId}] [CorrelationId: {correlationIdAccessor.CorrelationId}]");
             return Forbid();
+        }
 
         if (!string.IsNullOrEmpty(updateTaskDto.Title))
             task.Title = updateTaskDto.Title;
@@ -227,6 +247,7 @@ public class TaskController(TaskDbContext taskDbContext, IEventPublisher eventPu
 
         await taskDbContext.SaveChangesAsync();
         await eventPublisher.PublishTaskUpdated(task);
+        logger.LogInformation($"Task Updated: {task.Title} [CorrelationId: {correlationIdAccessor.CorrelationId}]");
         return Ok(new { task.Id, Message = "Task updated successfully" });
     }
 
@@ -235,13 +256,19 @@ public class TaskController(TaskDbContext taskDbContext, IEventPublisher eventPu
     {
         var task = await taskDbContext.TaskItems.FindAsync(id);
         if (task == null)
+        {
+            logger.LogError($"Task with id: {id} does not exist [CorrelationId: {correlationIdAccessor.CorrelationId}]");
             return NotFound("Task not found");
+        }
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var userRole = User.FindFirstValue(ClaimTypes.Role);
 
         if (task.AssignedToUserId != userId && userRole != "BoardOwner")
+        {
+            logger.LogWarning($"UnAuthorized access to delete task [Userid: {userId}] [CorrelationId: {correlationIdAccessor.CorrelationId}]");
             return Forbid();
+        }
 
         taskDbContext.TaskItems.Remove(task);
         await taskDbContext.SaveChangesAsync();

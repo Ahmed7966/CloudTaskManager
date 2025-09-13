@@ -1,5 +1,7 @@
 using Notifications.Events;
 using Notifications.Hub;
+using Notifications.Middleware;
+using shared.Correlation;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCors(options =>
@@ -14,10 +16,13 @@ builder.Services.AddCors(options =>
 });
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<RabbitMqEventSubscriber>();
-
+builder.Services.AddHealthChecks();
+builder.Services.AddScoped<ICorrelationIdAccessor, CorrelationIdAccessor>();
 var app = builder.Build();
 
+app.UseHttpsRedirection();
 app.UseCors("BlazorClientPolicy");
 app.MapHub<NotificationHub>("/hub/notifications");
-
+app.MapHealthChecks("/health");
+app.UseCorrelationId();
 app.Run();

@@ -5,7 +5,9 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using CloudTaskManager.Background;
 using CloudTaskManager.Message;
+using CloudTaskManager.Middleware.Extensions;
 using Microsoft.OpenApi.Models;
+using shared.Correlation;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,7 +50,6 @@ builder.Services.AddDbContext<TaskDbContext>(options =>
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var jwtSettings = builder.Configuration.GetSection("Jwt");
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -63,14 +64,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("BoardOwnerOnly", policy => policy.RequireRole("BoardOwner"));
-    options.AddPolicy("UserOrOwner", policy => policy.RequireRole("User", "BoardOwner"));
-});
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("BoardOwnerOnly", policy => policy.RequireRole("BoardOwner"))
+    .AddPolicy("UserOrOwner", policy => policy.RequireRole("User", "BoardOwner"));
 builder.Services.AddSingleton<IEventPublisher, RabbitMqEventPublisher>();
 builder.Services.AddHostedService<ReminderDueWorker>();
-
+builder.Services.AddHealthChecks();
+builder.Services.AddScoped<ICorrelationIdAccessor, CorrelationIdAccessor>();
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -79,10 +79,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.MapGet("/health", () => "ok");
 
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health");
+app.UseCorrelationId();
 app.Run();
