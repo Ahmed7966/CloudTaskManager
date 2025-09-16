@@ -1,0 +1,34 @@
+﻿@page "/register"
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<MudPaper Class="pa-4 mx-auto mt-6" MaxWidth="400px">
+    <MudText Typo="Typo.h5" GutterBottom="true">Register</MudText>
+
+    <MudTextField @bind-Value="UserName" Label="Username" Variant="Variant.Outlined" />
+    <MudTextField @bind-Value="Email" Label="Email" Variant="Variant.Outlined" />
+    <MudTextField @bind-Value="Password" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" />
+
+    <MudButton OnClick="HandleRegister" Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" FullWidth="true">
+        Register
+    </MudButton>
+</MudPaper>
+
+@code {
+    private string UserName { get; set; } = "";
+    private string Email { get; set; } = "";
+    private string Password { get; set; } = "";
+
+    private async Task HandleRegister()
+    {
+        var response = await Http.PostAsJsonAsync("api/identity/register", new { UserName, Email, Password });
+        if (response.IsSuccessStatusCode)
+        {
+            Nav.NavigateTo("/login");
+        }
+        else
+        {
+            // TODO: Snackbar error
+        }
+    }
+}

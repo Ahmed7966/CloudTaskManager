@@ -1,0 +1,41 @@
+﻿@page "/login"
+@using CloudTaskManager.Blazor.Services
+@inject HttpClient Http
+@inject ApiAuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<MudPaper Class="pa-4 mx-auto mt-6" MaxWidth="400px">
+    <MudText Typo="Typo.h5" GutterBottom="true">Login</MudText>
+
+    <MudTextField @bind-Value="Email" Label="Email" Variant="Variant.Outlined" />
+    <MudTextField @bind-Value="Password" Label="Password" Variant="Variant.Outlined" InputType="InputType.Password" />
+
+    <MudButton OnClick="HandleLogin" Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" FullWidth="true">
+        Login
+    </MudButton>
+</MudPaper>
+
+@code {
+    private string Email { get; set; } = "";
+    private string Password { get; set; } = "";
+
+    private async Task HandleLogin()
+    {
+        var response = await Http.PostAsJsonAsync("api/auth/login", new { Email, Password });
+        if (response.IsSuccessStatusCode)
+        {
+            var result = await response.Content.ReadFromJsonAsync<LoginResult>();
+            AuthProvider.SetToken(result!.Token);
+            Nav.NavigateTo("/");
+        }
+        else
+        {
+            // TODO: Snackbar error
+        }
+    }
+
+    private class LoginResult
+    {
+        public string Token { get; set; } = "";
+    }
+}

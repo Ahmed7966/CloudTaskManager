@@ -1,0 +1,53 @@
+services:
+  gateway:
+    build: ./src/CloudTaskManager.Gateway
+    ports:
+      - "5000:8080"
+    depends_on:
+      - identity
+      - task
+      - notification
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+
+  identity:
+    build: ./src/CloudTaskManager.Identity
+    ports:
+      - "5113:8080"
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__IdentityDatabase=Data Source=identity.db
+
+  task:
+    build: ./src/CloudTaskManager.Tasks
+    ports:
+      - "5138:8080"
+    depends_on:
+      - rabbitmq
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__TaskDatabase=Data Source=task.dbs
+      - RabbitMq__Host=rabbitmq
+      - RabbitMq__Port=5672
+      - RabbitMq__UserName=guest
+      - RabbitMq__Password=guest
+
+  notification:
+    build: ./src/CloudTaskManager.Notifications
+    ports:
+      - "5145:8080"
+    depends_on:
+      - rabbitmq
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - RabbitMq__Host=rabbitmq
+      - RabbitMq__Port=5672
+      - RabbitMq__UserName=guest
+      - RabbitMq__Password=guest
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672" # RabbitMQ dashboard
+

@@ -1,16 +1,21 @@
 ﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+<MudThemeProvider/>
+<MudLayout>
+    <MudAppBar Color="Color.Primary" Elevation="4">
+        <MudText Typo="Typo.h6">Cloud Task Manager</MudText>
+    </MudAppBar>
 
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
-</div>
+    <MudDrawer Variant="DrawerVariant.Temporary" Anchor="Anchor.Start" Elevation="2">
+        <MudNavMenu>
+            <MudNavLink Href="/" Icon="@Icons.Material.Filled.Home">Dashboard</MudNavLink>
+            <MudNavLink Href="/boards" Icon="@Icons.Material.Filled.ViewKanban">Boards</MudNavLink>
+            <MudNavLink Href="/tasks" Icon="@Icons.Material.Filled.List">Tasks</MudNavLink>
+            <MudNavLink Href="/reminders" Icon="@Icons.Material.Filled.Alarm">Reminders</MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent>
+        @Body
+    </MudMainContent>
+</MudLayout>

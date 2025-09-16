@@ -1,0 +1,104 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.Authorization
+@inject HttpClient Http
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+
+    <MudText Typo="Typo.h4" GutterBottom="true">Dashboard</MudText>
+
+    <MudGrid>
+        <!-- Boards Count -->
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">Boards</MudText>
+                    <MudText Typo="Typo.h5">@BoardsCount</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Tasks Count -->
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">Tasks</MudText>
+                    <MudText Typo="Typo.h5">@TasksCount</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Reminders Count -->
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">Reminders</MudText>
+                    <MudText Typo="Typo.h5">@RemindersCount</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- CloudTaskManager.Notifications Count -->
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">CloudTaskManager.Notifications</MudText>
+                    <MudText Typo="Typo.h5">@NotificationsCount</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <MudDivider Class="my-4"/>
+
+    <MudText Typo="Typo.h5" GutterBottom="true">Recent Tasks</MudText>
+
+    <MudTable Items="@RecentTasks" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Title</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Due Date</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Title">@context.Title</MudTd>
+            <MudTd DataLabel="Status">@context.Status</MudTd>
+            <MudTd DataLabel="Due Date">@context.DueDate.ToShortDateString()</MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudContainer>
+
+<AuthorizeView Roles="BoardOwner">
+    <MudButton Color="Color.Primary" Variant="Variant.Filled">Create Board</MudButton>
+</AuthorizeView>
+
+<AuthorizeView Roles="User">
+    <MudText>You are a normal user, assigned to boards</MudText>
+</AuthorizeView>
+
+@code {
+    private int BoardsCount { get; set; }
+    private int TasksCount { get; set; }
+    private int RemindersCount { get; set; }
+    private int NotificationsCount { get; set; }
+
+    private List<TaskDto> RecentTasks { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        BoardsCount = 2; 
+        TasksCount = 15; 
+        RemindersCount = 3; 
+        NotificationsCount = 5; 
+
+        RecentTasks = new List<TaskDto>
+        {
+            new TaskDto { Title = "Setup API Gateway", Status = "In Progress", DueDate = DateTime.UtcNow.AddDays(1) },
+            new TaskDto { Title = "Implement Reminders", Status = "Done", DueDate = DateTime.UtcNow.AddDays(-1) }
+        };
+    }
+
+    public class TaskDto
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTime DueDate { get; set; }
+    }
+}
